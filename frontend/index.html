@@ -1,0 +1,215 @@
+cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Underwater Object Detection</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #0a1628;
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8899aa;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .upload-box {
+            border: 2px dashed #00d4ff;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background 0.3s;
+        }
+        .upload-box:hover { background: #0d2040; }
+        .upload-box p { color: #8899aa; margin-top: 10px; }
+        input[type="file"] { display: none; }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #00d4ff;
+            color: #0a1628;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover { background: #00b8d9; }
+        button:disabled { background: #334; color: #667; cursor: not-allowed; }
+        .results {
+            display: none;
+            background: #0d2040;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .results img {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .detection-list { list-style: none; }
+        .detection-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #162030;
+            border-radius: 8px;
+            border-left: 4px solid #00d4ff;
+        }
+        .class-name { font-weight: bold; color: #00d4ff; }
+        .confidence { color: #8899aa; }
+        .loading {
+            text-align: center;
+            color: #00d4ff;
+            display: none;
+            margin: 20px 0;
+        }
+        .error {
+            color: #ff4444;
+            text-align: center;
+            display: none;
+            margin: 10px 0;
+        }
+        .count {
+            color: #8899aa;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Underwater Object Detection</h1>
+    <p class="subtitle">
+        YOLOv8s | 7 Classes | mAP50: 0.731
+    </p>
+
+    <div class="upload-box" 
+         onclick="document.getElementById('fileInput').click()">
+        <h2>📁 Click to Upload Image</h2>
+        <p>Supports JPG, PNG underwater images</p>
+        <p id="fileName" style="color:#00d4ff; margin-top:10px;"></p>
+    </div>
+
+    <input type="file" id="fileInput" 
+           accept="image/*" onchange="handleFile(this)">
+
+    <button id="detectBtn" onclick="detect()" disabled>
+        Detect Objects
+    </button>
+
+    <div class="error" id="error">
+        Something went wrong. Please try again.
+    </div>
+
+    <div class="loading" id="loading">
+        Detecting objects...
+    </div>
+
+    <div class="results" id="results">
+        <img id="resultImg" src="" alt="Detection Result">
+        <p class="count" id="countText"></p>
+        <ul class="detection-list" id="detectionList"></ul>
+    </div>
+</div>
+
+<script>
+    // IMPORTANT: Replace this with your Render backend URL
+    const BACKEND_URL = "https://your-app-name.onrender.com";
+    
+    let selectedFile = null;
+
+    function handleFile(input) {
+        selectedFile = input.files[0];
+        if (selectedFile) {
+            document.getElementById('fileName').textContent 
+                = selectedFile.name;
+            document.getElementById('detectBtn').disabled = false;
+        }
+    }
+
+    async function detect() {
+        if (!selectedFile) return;
+
+        // Show loading
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').style.display = 'none';
+        document.getElementById('error').style.display   = 'none';
+        document.getElementById('detectBtn').disabled    = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            const response = await fetch(
+                `${BACKEND_URL}/detect`, 
+                { method: 'POST', body: formData }
+            );
+
+            if (!response.ok) throw new Error('Detection failed');
+
+            const data = await response.json();
+
+            // Show result image
+            document.getElementById('resultImg').src 
+                = `data:image/jpeg;base64,${data.image}`;
+
+            // Show count
+            document.getElementById('countText').textContent
+                = `Found ${data.count} object(s)`;
+
+            // Show detections
+            const list = document.getElementById('detectionList');
+            list.innerHTML = '';
+
+            if (data.detections.length === 0) {
+                list.innerHTML = 
+                    '<li style="color:#8899aa; text-align:center">'
+                    + 'No objects detected</li>';
+            } else {
+                data.detections.forEach(d => {
+                    const li = document.createElement('li');
+                    li.className = 'detection-item';
+                    li.innerHTML = `
+                        <span class="class-name">${d.class}</span>
+                        <span class="confidence">
+                            ${(d.confidence*100).toFixed(1)}%
+                        </span>`;
+                    list.appendChild(li);
+                });
+            }
+
+            document.getElementById('results').style.display = 'block';
+
+        } catch (err) {
+            document.getElementById('error').style.display = 'block';
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('detectBtn').disabled   = false;
+        }
+    }
+</script>
+</body>
+</html>
+EOF
